@@ -202,7 +202,7 @@ def main():
 
     # Начинаем перебирать варианты 
     length_of_permutations = [elem.get_permutations_length() - 1 for elem in poliominos]    # Массив с длинами всевозможных перестановок для каждого полиомино
-    current_permitation = [0] * len(poliominos)                                             # Текущая перестановка полиомино
+    current_permitation = [i for i in range(len(poliominos))]                               # Текущая перестановка полиомино
     change_index = len(length_of_permutations) - 1                                          # Индекс по которому изменяем перестановку
     while True:
         result_desk = np.zeros((desk_h, desk_w))
