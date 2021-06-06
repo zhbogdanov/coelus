@@ -1,232 +1,288 @@
 from copy import deepcopy
 import numpy as np
 
-NUM_OF_COLORS = 8
-
-SHOW_RESULT = False
-
 INPUT_DATA = [
-    (4, 5), # Размер прямоугольника
-    [((2, 2), 1)], # Прямоугольные полиомино
-    [((3, 2), 2), ((2, 2), 2)] # L-образные полиомино
+    (3, 5),                     # Размер прямоугольника
+    [((2, 2), 1)],              # Прямоугольные полиомино
+    [((3, 2), 1), ((2, 2), 2)]  # L-образные полиомино
 ]
 
-class FontColors:
-    def __init__(self):
-        self.colors = {}
-        self.colors[0] = '\033[91m'
-        self.colors[1] = '\033[92m'
-        self.colors[2] = '\033[93m'
-        self.colors[3] = '\033[94m'
-        self.colors[4] = '\033[95m'
-        self.colors[5] = '\033[96m'
-        self.colors[6] = '\033[97m'
-        self.colors[7] = '\033[99m'
-
-    def get_color(self, i):
-        return self.colors[i]
-
-def get_class(coords, all_coords):
-    for i in range(len(all_coords)):
-        if coords in all_coords[i]:
-            return i % NUM_OF_COLORS
-    return NUM_OF_COLORS + 1
-
-def print_color_matrix(matrix, coords):
-    colors = FontColors()
-    for i in range(matrix.shape[0]):
-        for j in range(matrix.shape[1]):
-            color_class = get_class((i, j), coords) 
-            print(' ' if color_class == 9 else colors.get_color(color_class) + '#' + '\033[0m', end='')
-        print()
-
-# Заполнение прямоугольника 
-def fill_rectangular(matrix, width, heigh):
-    for i in range(heigh):
-        for j in range(width):
-            matrix[i][j] = 1
-    return matrix
-
-# Сдвиг полиомино по вертикали
-def shift_axis0(matrix, step_axis0):
-    result = []
-    for step in range(step_axis0 + 1):
-        result.append(np.roll(matrix, step, axis=0))
-    return result
-
-# Сдвиг полиомино во всех направлениях
-def shift_poliomino(matrix, step_axis0, step_axis1):
-    result = []
-    for step in range(step_axis1 + 1):   
-        result.extend(shift_axis0(np.roll(matrix, step, axis=1), step_axis0))
-    return result
-
 class Poliomino:
-    def __init__(self, pol_size, desk_w, desk_h, mode):
-        self.mode = mode            # Прямоугольные или L-образные (R or L)
-        self.heigh = pol_size[0]    # Длине левой "коемки" полиомино
-        self.width = pol_size[1]    # Длине нижней "коемки" полиомино 
-        self.desk_w = desk_w        # Ширина поля (по горизонтали)
-        self.desk_h = desk_h        # Высота поля (по вертикали)
-        self.orientation = []       # Повернутые в пространстве фигуры
-        self.permutations = []      # Перестановки всех поворотов фигур 
+    def __init__(self, pol_size = (0, 0), quantity = 0, desk_w = 1, desk_h = 1, mode = 'R'):
+        self.height = pol_size[0]
+        self.width = pol_size[1] 
+        self.quantity = quantity
+        self.mode = mode
+        self.size = self.width * self.height if mode == 'R' else self.width + self.height - 1
+        self.schema = {} # будем хранить только те координаты, которые занимает полиомино (от левого верхнего края)
+        pos = 0
         if mode == 'R':
-            self.size = self.heigh * self.width
             # Либо полиомино прямоугольник и помещается только вдоль, либо полиомино квадрат
-            if (self.heigh > self.desk_w or self.width > self.desk_h) or self.heigh == self.width:  
+            if (self.height > desk_w or self.width > desk_h) or self.height == self.width:  
                 self.rotate = [0]
             # Если полиоино прямоугольник и помещается только поперек 
-            elif self.heigh > self.desk_h or self.width > self.desk_w:
-                self.heigh, self.width = self.width, self.heigh
+            elif self.height > desk_h or self.width > desk_w:
+                self.height, self.width = self.width, self.height
                 self.rotate = [0]
             else:
                 self.rotate = [0, 90]
-        else:
-            self.size = self.heigh + self.width - 1
-            # Полиомино помещается только вдоль
-            if self.heigh > self.desk_w or self.width > self.desk_h:
+            for i in range(self.height):
+                for j in range(self.width):
+                    self.schema[pos] = [i, j]
+                    pos += 1
+        else: # mode = L
+            if self.height > desk_w or self.width > desk_h:
                 self.rotate = [0, 180]
             # Полиомино помещается только поперек
-            elif self.heigh > self.desk_h or self.width > self.desk_w:
-                self.heigh, self.width = self.width, self.heigh
+            elif self.height > desk_h or self.width > desk_w:
+                self.height, self.width = self.width, self.height
                 self.rotate = [0, 180]
-            # Полиомино - прямоугольник (на случай, если такой будет подан)
-            elif self.heigh == 1 or self.width == 1:
-                self.rotate = [0, 90]
             else:
-                self.rotate = [0, 90, 180, 270] 
+                self.rotate = [0, 90, 180, 270]
+            for j in range(self.width):
+                self.schema[pos] = [0, j]
+                pos += 1
+            for i in range(self.height):
+                self.schema[pos] = [i, 0]
+                pos += 1
 
-    def rotate_rectangular(self, angles):
-        for angle in angles:
-            buf_matrix = np.zeros((self.desk_h, self.desk_w))
-            if angle == 0:
-                self.orientation.append(deepcopy(fill_rectangular(buf_matrix, self.width, self.heigh)))
-            elif angle == 90:
-                self.orientation.append(deepcopy(fill_rectangular(buf_matrix, self.heigh, self.width)))
+    def rotate_(self, angle):
+        if angle == 0:
+            return self.schema
+        result = deepcopy(self.schema)
+        if angle == 90:
+            for pos in range(len(self.schema)):
+                result[pos][0] = -self.schema[pos][1]
+                result[pos][1] = self.schema[pos][0]
+        elif angle == 180:
+            for pos in range(len(self.schema)):
+                result[pos][0] = -self.schema[pos][0]
+                result[pos][1] = -self.schema[pos][1]
+        elif angle == 270:
+            for pos in range(len(self.schema)):
+                result[pos][0] = self.schema[pos][1]
+                result[pos][1] = -self.schema[pos][0]
+        return result
 
-    def rotate_l_like(self, angles):
-        for angle in angles:
-            buf_matrix = np.zeros((self.desk_h, self.desk_w))
-            if angle == 0:
-                for i in range(self.heigh):
-                    buf_matrix[i][0] = 1
-                for j in range(self.width):
-                    buf_matrix[self.heigh - 1][j] = 1
-                self.orientation.append(deepcopy(buf_matrix))
-            elif angle == 90:
-                heigh, width = self.width, self.heigh
-                for i in range(heigh):
-                    buf_matrix[i][width - 1] = 1
-                for j in range(width):
-                    buf_matrix[heigh - 1][j] = 1
-                self.orientation.append(deepcopy(buf_matrix))
-            elif angle == 180:
-                for i in range(self.heigh):
-                    buf_matrix[i][self.width - 1] = 1
-                for j in range(self.width):
-                    buf_matrix[0][j] = 1
-                self.orientation.append(deepcopy(buf_matrix))
-            else:
-                heigh, width = self.width, self.heigh
-                for i in range(heigh):
-                    buf_matrix[i][0] = 1
-                for j in range(width):
-                    buf_matrix[0][j] = 1
-                self.orientation.append(deepcopy(buf_matrix))
+    def get_width(self):
+        return self.width
 
-    # Вычисляем расстояние от полиомино до границ доски 
-    def add_permutations_length(self):
-        for i in range(len(self.rotate)):
-            if self.rotate[i] == 0 or self.rotate[i] == 180:
-                dif_axis1 = self.desk_w - self.width
-                dif_axis0 = self.desk_h - self.heigh
-            else:
-                dif_axis1 = self.desk_w - self.heigh
-                dif_axis0 = self.desk_h - self.width
-            self.permutations.extend(shift_poliomino(self.orientation[i], dif_axis0, dif_axis1))
-
-    def get_permutation(self, index):
-        return self.permutations[index]
-
-    def get_permutations_length(self):
-        return len(self.permutations)
-
-    def get_size(self):
-        return self.size
+    def get_height(self):
+        return self.height
 
     def get_rotate(self):
         return self.rotate
 
+    def get_quantity(self):
+        return self.quantity
+    
+    def get_size(self):
+        return self.quantity * self.size
+
+    def get_max(self):
+        return max(self.width, self.height)
+    
+    def inc_quantity(self):
+        self.quantity += 1
+
+    def dec_quantity(self):
+        self.quantity -= 1
+
+    def get_schema_len(self):
+        return len(self.schema)
+
+class Desk:
+    def __init__(self, desk_size=[1, 1]):
+        self.height = desk_size[1]
+        self.width = desk_size[0]
+        self.decision_tree = []
+        self.buff = 1
+        self.poli_number = 1
+        self.poli_buffer = []
+        self.schema = np.zeros((self.height, self.width), dtype=int)
+        self.num_of_tree = 0
+
+    def get_size(self):
+        return self.width, self.height 
+
+    def get_schema_elem(self, i, j):
+        return self.schema[i][j]
+    
+    def delete_poli(self, i, j, schema, last_pos):
+        for pos in range(last_pos):
+            self.schema[i + schema[pos][0]][j + schema[pos][1]] = 0
+
+    def add_to_decision_tree(self, i, j, poli, angle, buff_):
+                                  # pos = 0         children =  1  2
+        self.decision_tree.append([[i, j, poli, angle, buff_], [], self.num_of_tree])
+        tree_len = len(self.decision_tree) - 1
+        self.decision_tree[self.num_of_tree][1].append(self.decision_tree[tree_len])
+        self.num_of_tree = tree_len
+
+    def put_poliomino_to_tree(self, i, j, poli, angle, put_into_tree = False):
+        schema = poli.rotate_(angle)
+        buff_ = self.buff
+        for pos in range(len(schema)): 
+            new_i, new_j = i + schema[pos][0], j + schema[pos][1]
+            if new_i < 0 or new_i >= self.height or new_j < 0 or new_j >= self.width or self.schema[new_i][new_j]:            
+                self.delete_poli(i, j, schema, pos)
+                self.buff = buff_         
+                return False
+            self.schema[new_i][new_j] = self.poli_number
+            self.buff = max(new_i + 1, self.buff)
+        poli.dec_quantity()
+
+        if put_into_tree:
+            self.add_to_decision_tree(i, j, poli, angle, buff_)
+            self.poli_number += 1
+        else: 
+            self.poli_buffer = [i, j, poli, angle, buff_]
+        return True
+
+        
+
+    def delete_node(self):
+        if(self.num_of_tree == 0):
+            return False
+        children = self.decision_tree[self.num_of_tree][1]
+        for child in children:
+            self.decision_tree.remove(child)
+        self.num_of_tree = self.decision_tree[self.num_of_tree][2]
+        return True
+    
+    def delete_poli_from_tree(self):
+        if self.poli_buffer:
+            [i, j, poli, angle, self.buff] = self.poli_buffer
+            self.poli_buffer = []
+        else: 
+            [i, j, poli, angle, self.buff] = self.decision_tree[self.num_of_tree][0]
+            if not self.delete_node():
+                return -1, -1
+            self.poli_number -= 1
+        poli.inc_quantity()
+        self.delete_poli(i, j, poli.rotate_(angle), poli.get_schema_len())
+        return i, j
+
+    def get_measure(self):
+        measure = 0
+        for i in range(self.buff):
+            row_measure = self.schema[i][0] == 0
+            for j in range(1, self.width):
+                row_measure += (self.schema[i][j] == 0) + ((self.schema[i][j] == 1) & (self.schema[i][j-1] == 0)) * 0.5
+            measure += row_measure * (1 + 0.25 * (self.buff - i - 1))
+        return measure / self.buff
+
+    def find_the_same_tree(self, poli, angle):
+        if self.decision_tree != []:
+            for child in self.decision_tree[self.num_of_tree][1]:
+                data = child[0]
+                if (poli == data[0]) and (angle == data[3]):
+                    return False
+        return True
+             
 # Смотрим помещается ли полиомино на доску 
 def check_size(desk_w, desk_h, pol):
     return (desk_w < pol[0] or desk_h < pol[1]) and (desk_h < pol[0] or desk_w < pol[1])
 
-def get_coords(matrix):
-    coords = []
-    for i in range(matrix.shape[0]):
-        for j in range(matrix.shape[1]):
-            if matrix[i][j] == 1:
-                coords.append((i, j))
-    return coords
+def find_next_poli(polis, pos = 0):
+    for i in range(pos, len(polis)):
+        if polis[i].get_quantity():
+            return polis[i], i 
+    return None, 0
+
+def find_free_cell(desk, i = 0, j = 0):
+    if j >= desk.get_size()[0]:
+        j = 0
+        i += 1
+    for i_ in range(i, desk.get_size()[1]):
+        j = j * (i_ == i)
+        for j_ in range(j, desk.get_size()[0]):
+            if desk.get_schema_elem(i_, j_) == 0:
+                return i_, j_
+    return -1, -1
 
 def main():
-    desk_w, desk_h = INPUT_DATA[0][0], INPUT_DATA[0][1]
-    poliominos = []
+    desk = Desk(INPUT_DATA[0])
+    desk_w, desk_h = desk.get_size()
+    
 
+    poliominos = []
     # Инициализируем прямоугольные полиомино
     for elem in INPUT_DATA[1]: 
         if check_size(desk_w, desk_h, elem[0]):
             return False 
-        for _ in range(elem[1]):
-            poli = Poliomino(elem[0], desk_w, desk_h, 'R')
-            poli.rotate_rectangular(poli.get_rotate())
-            poli.add_permutations_length()
-            poliominos.append(poli)
-
+        poliominos.append(Poliomino(elem[0], elem[1], desk_w, desk_h))
     # Инициализируем L-образные полиомино
     for elem in INPUT_DATA[2]:
         if check_size(desk_w, desk_h, elem[0]):
                 return False 
-        for _ in range(elem[1]):
-            poli = Poliomino(elem[0], desk_w, desk_h, 'L')
-            poli.rotate_l_like(poli.get_rotate())
-            poli.add_permutations_length()
-            poliominos.append(poli)
+        poliominos.append(Poliomino(elem[0], elem[1], desk_w, desk_h, mode='L'))
 
-    # Если размер полиомино > размера поля => False
-    if desk_w * desk_h < sum(elem.get_size() for elem in poliominos):
-        return False      
+    pols_quantity = sum(elem.get_quantity() for elem in poliominos)
+    pols_size = sum(elem.get_size() for elem in poliominos)
+    # Если суммарная площадь полиомино > площади стола => нельзя разместить 
+    if pols_size > desk_w * desk_h:
+        return False
 
     # Сортируем по размеру (от большего к меньшему)
-    poliominos.sort(key=lambda x: x.get_size(), reverse=True)
+    poliominos.sort(key=lambda x: x.get_max(), reverse=True)
+    
+    # Создаем дерево дерешений с нулевым полиомино в узле 
+    desk.put_poliomino_to_tree(0, 0, Poliomino(), 0, True)
+    num = 0
 
-    # Начинаем перебирать варианты 
-    length_of_permutations = [elem.get_permutations_length() - 1 for elem in poliominos]    # Массив с длинами всевозможных перестановок для каждого полиомино
-    current_permitation = [i for i in range(len(poliominos))]                               # Текущая перестановка полиомино
-    change_index = len(length_of_permutations) - 1                                          # Индекс по которому изменяем перестановку
-    while True:
-        result_desk = np.zeros((desk_h, desk_w))
-        # Суммируем все перестановки, если фигуры наклыдваются друг на друга, то значение ячейки > 1
-        coords = []
-        for i in range(len(current_permitation)):
-            permutation = poliominos[i].get_permutation(current_permitation[i])
-            result_desk = result_desk + permutation
-            coords.append(get_coords(permutation))
-        if result_desk.max() == 1:
-            if SHOW_RESULT:
-                print_color_matrix(result_desk, coords)
-            return True
-        while True:
-            # Если перестановок для полиомино с индексом change_index не осталось, переставляем предыдущее полиомино и начинаем переставлять все последующие 
-            if current_permitation == length_of_permutations:
-                return False
-            if current_permitation[change_index] == length_of_permutations[change_index]:
-                current_permitation[change_index] = 0
-                change_index -= 1
+    # Добавляем первый полиомино 
+    desk.put_poliomino_to_tree(0, 0, poliominos[num], 0, True)
+    pols_quantity -= 1
+
+    i_start = 0
+    j_start = poliominos[num].get_width()
+
+    best_fit = []
+
+    max_measure = desk.get_size()[0] * desk.get_size()[1]
+    fit_measure = max_measure
+
+    poli, num = find_next_poli(poliominos)
+
+    while pols_quantity:
+        i_buf, j_buf = i_start, j_start
+        if not poli:
+            for angle in poli.get_rotate():
+                while i_start != -1:
+                    if not desk.find_the_same_tree(poli, angle):
+                        break
+                    if desk.put_poliomino_to_tree(i_start, j_start, poli, angle):
+                        measure = desk.get_measure()
+                        if measure < fit_measure:
+                            fit_measure = measure
+                            best_fit = [i_start, j_start, poli, angle]
+                        i, _ = desk.delete_poli_from_tree()
+                        if i == -1:
+                            return False
+                    i_start, j_start = find_free_cell(desk, i_start, j_start + 1)
+                        
+                i_start, j_start = i_buf, j_buf
+
+        poli, num = find_next_poli(poliominos, num + 1)
+
+        if not poli:
+            if best_fit != []: # Если нашли самый подходящий полиомино => размещаем в дереве 
+
+                desk.put_poliomino_to_tree(best_fit[0], best_fit[1], best_fit[2], best_fit[3], True)
+                pols_quantity -= 1
+                i_start, j_start = find_free_cell(desk, i_start, j_start)
+                best_fit, num = [], 0
+                measure = max_measure
             else:
-                current_permitation[change_index] += 1
-                change_index = len(length_of_permutations) - 1
-                break
-            
-result = main()
-print(result)
+                i_start, j_start = find_free_cell(desk, i_start, j_start + 1)
+                if i_start == -1:
+                    desk.delete_poli_from_tree()
+                    pols_quantity += 1
+                    i_start, j_start = find_free_cell(desk)
+                best_fit = []
+                
+            poli, num = find_next_poli(poliominos)
+
+    return True
+print(main())
